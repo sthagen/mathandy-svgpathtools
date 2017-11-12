@@ -97,21 +97,6 @@ def bbox2path(xmin, xmax, ymin, ymax):
     return Path(b, r, t.reversed(), l.reversed())
 
 
-def polyline(*points):
-    """Converts a list of points to a Path composed of lines connecting those 
-    points (i.e. a linear spline or polyline).  See also `polygon()`."""
-    return Path(*[Line(points[i], points[i+1])
-                  for i in range(len(points) - 1)])
-
-
-def polygon(*points):
-    """Converts a list of points to a Path composed of lines connecting those 
-    points, then closes the path by connecting the last point to the first.  
-    See also `polyline()`."""
-    return Path(*[Line(points[i], points[(i + 1) % len(points)])
-                  for i in range(len(points))])
-
-
 # Conversion###################################################################
 
 def bpoints2bezier(bpoints):
@@ -2151,13 +2136,7 @@ class Path(MutableSequence):
 
     def cropped(self, T0, T1):
         """returns a cropped copy of the path."""
-        assert 0 <= T0 <= 1 and 0 <= T1<= 1
         assert T0 != T1
-        assert not (T0 == 1 and T1 == 0)
-
-        if T0 == 1 and 0 < T1 < 1 and self.isclosed():
-            return self.cropped(0, T1)
-
         if T1 == 1:
             seg1 = self[-1]
             t_seg1 = 1
@@ -2192,7 +2171,7 @@ class Path(MutableSequence):
 
             # T1<T0 must cross discontinuity case
             if T1 < T0:
-                if not self.isclosed():
+                if self.isclosed():
                     raise ValueError("This path is not closed, thus T0 must "
                                      "be less than T1.")
                 else:
