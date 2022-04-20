@@ -3,19 +3,17 @@ import codecs
 import os
 
 
-VERSION = '1.4.2'
+VERSION = '1.4.4'
 AUTHOR_NAME = 'Andy Port'
 AUTHOR_EMAIL = 'AndyAPort@gmail.com'
 GITHUB = 'https://github.com/mathandy/svgpathtools'
 
+_here = os.path.abspath(os.path.dirname(__file__))
 
-def read(*parts):
-    """
-    Build an absolute path from *parts* and and return the contents of the
-    resulting file.  Assume UTF-8 encoding.
-    """
-    HERE = os.path.abspath(os.path.dirname(__file__))
-    with codecs.open(os.path.join(HERE, *parts), "rb", "utf-8") as f:
+
+def read(relative_path):
+    """Reads file at relative path, returning contents as string."""
+    with codecs.open(os.path.join(_here, relative_path), "rb", "utf-8") as f:
         return f.read()
 
 
@@ -32,9 +30,8 @@ setup(name='svgpathtools',
       download_url='{}/releases/download/{}/svgpathtools-{}-py2.py3-none-any.whl'
                    ''.format(GITHUB, VERSION, VERSION),
       license='MIT',
-      install_requires=['numpy', 'svgwrite'],
+      install_requires=['numpy', 'svgwrite', 'scipy'],
       platforms="OS Independent",
-      requires=['numpy', 'svgwrite'],
       keywords=['svg', 'svg path', 'svg.path', 'bezier', 'parse svg path', 'display svg'],
       classifiers=[
             "Development Status :: 4 - Beta",
@@ -43,6 +40,13 @@ setup(name='svgpathtools',
             "Operating System :: OS Independent",
             "Programming Language :: Python :: 2",
             "Programming Language :: Python :: 3",
+            "Programming Language :: Python :: 2.7",
+            "Programming Language :: Python :: 3.5",
+            "Programming Language :: Python :: 3.6",
+            "Programming Language :: Python :: 3.7",
+            "Programming Language :: Python :: 3.8",
+            "Programming Language :: Python :: 3.9",
+            "Programming Language :: Python :: 3.10",
             "Topic :: Multimedia :: Graphics :: Editors :: Vector-Based",
             "Topic :: Scientific/Engineering",
             "Topic :: Scientific/Engineering :: Image Recognition",
