@@ -189,7 +189,6 @@ def bez2poly(bez, numpy_ordering=True, return_poly1d=False):
 def transform_segments_together(path, transformation):
     """Makes sure that, if joints were continuous, they're kept that way."""
     transformed_segs = [transformation(seg) for seg in path]
-    joint_was_continuous = [sa.end == sb.start for sa, sb in path.joints()]
 
     for i, (sa, sb) in enumerate(path.joints()):
         if sa.end == sb.start:
@@ -202,7 +201,7 @@ def rotate(curve, degs, origin=None):
     (a complex number).  By default origin is either `curve.point(0.5)`, or in
     the case that curve is an Arc object, `origin` defaults to `curve.center`.
     """
-    def transform(z):
+    def rotate_point(z):
         return exp(1j*radians(degs))*(z - origin) + origin
 
     if origin is None:
@@ -215,10 +214,10 @@ def rotate(curve, degs, origin=None):
         transformation = lambda seg: rotate(seg, degs, origin=origin)
         return transform_segments_together(curve, transformation)
     elif is_bezier_segment(curve):
-        return bpoints2bezier([transform(bpt) for bpt in curve.bpoints()])
+        return bpoints2bezier([rotate_point(bpt) for bpt in curve.bpoints()])
     elif isinstance(curve, Arc):
-        new_start = transform(curve.start)
-        new_end = transform(curve.end)
+        new_start = rotate_point(curve.start)
+        new_end = rotate_point(curve.end)
         new_rotation = curve.rotation + degs
         return Arc(new_start, radius=curve.radius, rotation=new_rotation,
                    large_arc=curve.large_arc, sweep=curve.sweep, end=new_end)
@@ -295,6 +294,10 @@ def scale(curve, sx, sy=None, origin=0j):
 
 def transform(curve, tf):
     """Transforms the curve by the homogeneous transformation matrix tf"""
+
+    if all((tf == np.eye(3)).ravel()):
+        return curve  # tf is identity, return curve as is
+
     def to_point(p):
         return np.array([[p.real], [p.imag], [1.0]])
 
@@ -315,7 +318,7 @@ def transform(curve, tf):
         new_start = to_complex(tf.dot(to_point(curve.start)))
         new_end = to_complex(tf.dot(to_point(curve.end)))
         
-        # Based on https://math.stackexchange.com/questions/2349726/compute-the-major-and-minor-axis-of-an-ellipse-after-linearly-transforming-it
+        # Based on https://math.stackexchange.com/questions/2349726/
         rx2 = curve.radius.real ** 2
         ry2 = curve.radius.imag ** 2
 
@@ -338,7 +341,7 @@ def transform(curve, tf):
         else : 
             return Arc(new_start, radius=new_radius, rotation=curve.rotation + rot,
                        large_arc=curve.large_arc, sweep=curve.sweep, end=new_end,
-                       autoscale_radius=False)
+                       autoscale_radius=True)
 
     else:
         raise TypeError("Input `curve` should be a Path, Line, "
