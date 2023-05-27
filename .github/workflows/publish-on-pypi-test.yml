@@ -8,7 +8,7 @@ on:
 jobs:
   build-n-publish:
     name: Build and publish to TestPyPI
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@master
     - name: Set up Python 3
@@ -30,7 +30,7 @@ jobs:
         --outdir dist/
         .
     - name: Publish to Test PyPI
-      uses: pypa/gh-action-pypi-publish@master
+      uses: pypa/gh-action-pypi-publish@release/v1
       with:
         skip_existing: true
         password: ${{ secrets.TESTPYPI_API_TOKEN }}

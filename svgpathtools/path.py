@@ -43,8 +43,8 @@ except NameError:
 COMMANDS = set('MmZzLlHhVvCcSsQqTtAa')
 UPPERCASE = set('MZLHVCSQTA')
 
-COMMAND_RE = re.compile("([MmZzLlHhVvCcSsQqTtAa])")
-FLOAT_RE = re.compile("[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?")
+COMMAND_RE = re.compile(r"([MmZzLlHhVvCcSsQqTtAa])")
+FLOAT_RE = re.compile(r"[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?")
 
 # Default Parameters ##########################################################
 
@@ -338,9 +338,13 @@ def transform(curve, tf):
 
         if new_radius.real == 0 or new_radius.imag == 0 :
             return Line(new_start, new_end)
-        else : 
+        else:
+            if tf[0][0] * tf[1][1] >= 0.0:
+                new_sweep = curve.sweep
+            else:
+                new_sweep = not curve.sweep
             return Arc(new_start, radius=new_radius, rotation=curve.rotation + rot,
-                       large_arc=curve.large_arc, sweep=curve.sweep, end=new_end,
+                       large_arc=curve.large_arc, sweep=new_sweep, end=new_end,
                        autoscale_radius=True)
 
     else:
@@ -1394,7 +1398,7 @@ class CubicBezier(object):
 class Arc(object):
     def __init__(self, start, radius, rotation, large_arc, sweep, end,
                  autoscale_radius=True):
-        """
+        r"""
         This should be thought of as a part of an ellipse connecting two
         points on that ellipse, start and end.
         Parameters
@@ -2568,7 +2572,7 @@ class Path(MutableSequence):
 
         # Shortcuts
         if len(self._segments) == 0:
-            return None
+            raise ValueError("This path contains no segments!")
         if pos == 0.0:
             return self._segments[0].point(pos)
         if pos == 1.0:
@@ -2585,6 +2589,7 @@ class Path(MutableSequence):
                     segment_end - segment_start)
                 return segment.point(segment_pos)
             segment_start = segment_end
+        raise RuntimeError("Something has gone wrong.  Could not compute Path.point({}) for path {}".format(pos, self))
 
     def length(self, T0=0, T1=1, error=LENGTH_ERROR, min_depth=LENGTH_MIN_DEPTH):
         self._calc_lengths(error=error, min_depth=min_depth)
