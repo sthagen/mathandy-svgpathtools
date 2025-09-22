@@ -327,7 +327,7 @@ def transform(curve, tf):
         invT = np.linalg.inv(tf[:2,:2])
         D = reduce(np.matmul, [invT.T, Q, invT])
 
-        eigvals, eigvecs = np.linalg.eig(D)
+        eigvals, eigvecs = np.linalg.eigh(D)
 
         rx = 1 / np.sqrt(eigvals[0])
         ry = 1 / np.sqrt(eigvals[1])
