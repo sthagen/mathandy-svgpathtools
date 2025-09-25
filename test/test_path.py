@@ -15,7 +15,7 @@ from svgpathtools import (
     bpoints2bezier, closest_point_in_path, farthest_point_in_path,
     is_bezier_segment, is_bezier_path, parse_path
 )
-from svgpathtools.path import bezier_radialrange
+from svgpathtools.path import bezier_radialrange, transform
 
 # An important note for those doing any debugging:
 # ------------------------------------------------
@@ -723,6 +723,56 @@ class ArcTest(unittest.TestCase):
             d = abs(path1.length() - path2.length())
             # Error less than 0.1% typically less than 0.001%
             self.assertAlmostEqual(d, 0.0, delta=2)
+
+    def test_transform(self):
+        TOL = 1e-6
+
+        # Returns a 3x3 homogeneous rotation matrix of `angle_deg` degrees about the provided `center`
+        def R(angle_deg, center=(0, 0)):
+            radians = angle_deg * pi / 180
+            cos_a, sin_a = np.cos(radians), np.sin(radians)
+            x, y = center
+            print(angle_deg)
+
+            return np.array([
+                [cos_a, -sin_a, x - x * cos_a + y * sin_a],
+                [sin_a, cos_a, y - x * sin_a - y * cos_a],
+                [0, 0, 1]
+            ])
+
+        # Define some vertices derived from a rounded rect
+        #  <rect x="116.40955" y="202.60011"
+        #        width="32" height="10"
+        #        rx="5" ry="5"
+        #        transform="rotate(-8)" />
+        rect_top_left = 116.40955+207.60011j
+        rect_top_right = 148.40955+207.60011j
+        rect_bottom_left = 121.40955+202.60011j
+        rect_bottom_right = 143.40955+212.60011j
+        radius = 5+5j
+
+        # Test Arcs w/ endpoints from the rectangle
+        test_paths = [
+            Arc(start=rect_bottom_right, radius=radius, rotation=0.0, large_arc=False, sweep=True, end=rect_top_right),
+            Arc(start=rect_top_right, radius=radius, rotation=0.0, large_arc=False, sweep=True, end=rect_bottom_right),
+            Arc(start=rect_bottom_left, radius=radius, rotation=0.0, large_arc=False, sweep=True, end=rect_top_left),
+            Arc(start=rect_top_left, radius=radius, rotation=0.0, large_arc=False, sweep=True, end=rect_bottom_left)
+        ]
+
+        # Define several rotation matrices to transform these arcs (some with explicit centers)
+        xforms = [R(-152.62813), R(-48.851395), R(-45.851395), R(-40.851395),
+                  R(-40.5511), R(-36.5511), R(-30), R(-26.5511), R(-25.851395),
+                  R(-25),R(-23.5511), R(-20), R(-18), R(-15), R(-14), R(-12),
+                  R(-8), R(-6), R(-5.8513953), R(0),  R(5), R(10), R(12),
+                  R(15), R(16.31965), R(18), R(20), R(25),
+                  R(53.961757), R(60.737255), R(61.722145)]
+        xforms.extend([R(-20,(256,175)), R(12,(216,185)), R(15,(216,185))])
+
+        # Test transform function; rotation matrices should not affect lengths
+        for path in test_paths:
+            for tf in xforms:
+                transformed = transform(path, tf)
+                self.assertAlmostEqual(transformed.length(), path.length(), delta=TOL)
 
 
 class TestPath(unittest.TestCase):
