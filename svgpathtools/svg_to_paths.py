@@ -4,18 +4,35 @@ The main tool being the svg2paths() function."""
 # External dependencies
 from __future__ import division, absolute_import, print_function
 from xml.dom.minidom import parse
-from os import path as os_path, getcwd
+import os
+from io import StringIO
+import re
+try:
+    from os import PathLike as FilePathLike
+except ImportError:
+    FilePathLike = str
 
 # Internal dependencies
 from .parser import parse_path
 
 
-def ellipse2pathd(ellipse):
+COORD_PAIR_TMPLT = re.compile(
+    r'([\+-]?\d*[\.\d]\d*[eE][\+-]?\d+|[\+-]?\d*[\.\d]\d*)' +
+    r'(?:\s*,\s*|\s+|(?=-))' +
+    r'([\+-]?\d*[\.\d]\d*[eE][\+-]?\d+|[\+-]?\d*[\.\d]\d*)'
+)
+
+
+def path2pathd(path):
+    return path.get('d', '')
+
+
+def ellipse2pathd(ellipse, use_cubics=False):
     """converts the parameters from an ellipse or a circle to a string for a 
     Path object d-attribute"""
 
-    cx = ellipse.get('cx', None)
-    cy = ellipse.get('cy', None)
+    cx = ellipse.get('cx', 0)
+    cy = ellipse.get('cy', 0)
     rx = ellipse.get('rx', None)
     ry = ellipse.get('ry', None)
     r = ellipse.get('r', None)
@@ -29,69 +46,118 @@ def ellipse2pathd(ellipse):
     cx = float(cx)
     cy = float(cy)
 
-    d = ''
-    d += 'M' + str(cx - rx) + ',' + str(cy)
-    d += 'a' + str(rx) + ',' + str(ry) + ' 0 1,0 ' + str(2 * rx) + ',0'
-    d += 'a' + str(rx) + ',' + str(ry) + ' 0 1,0 ' + str(-2 * rx) + ',0'
+    if use_cubics:
+        # Modified by NXP 2024, 2025
+        PATH_KAPPA = 0.552284
+        rxKappa = rx * PATH_KAPPA;
+        ryKappa = ry * PATH_KAPPA;
 
-    return d
+        #According to the SVG specification (https://lists.w3.org/Archives/Public/www-archive/2005May/att-0005/SVGT12_Main.pdf),
+        #Section 9.4, "The 'ellipse' element": "The arc of an 'ellipse' element begins at the "3 o'clock" point on
+        #the radius and progresses towards the "9 o'clock". Therefore, the ellipse begins at the rightmost point
+        #and progresses clockwise.
+        d = ''
+        # Move to the rightmost point
+        d += 'M' + str(cx + rx) + ' ' + str(cy)
+        # Draw bottom-right quadrant
+        d += 'C' + str(cx + rx) + ' ' + str(cy + ryKappa) + ' ' + str(cx + rxKappa) + ' ' + str(cy + ry) + ' ' + str(cx) + ' ' + str(cy + ry)
+        # Draw bottom-left quadrant
+        d += 'C' + str(cx - rxKappa) + ' ' + str(cy + ry) + ' ' + str(cx - rx) + ' ' + str(cy + ryKappa) + ' ' + str(cx - rx) + ' ' + str(cy)
+        # Draw top-left quadrant
+        d += 'C' + str(cx - rx) + ' ' + str(cy - ryKappa) + ' ' + str(cx - rxKappa) + ' ' + str(cy - ry) + ' ' + str(cx) + ' ' + str(cy - ry)
+        # Draw top-right quadrant
+        d += 'C' + str(cx + rxKappa) + ' ' + str(cy - ry) + ' ' + str(cx + rx) + ' ' + str(cy - ryKappa) + ' ' + str(cx + rx) + ' ' + str(cy)
+    else:
+        d = ''
+        d += 'M' + str(cx - rx) + ',' + str(cy)
+        d += 'a' + str(rx) + ',' + str(ry) + ' 0 1,0 ' + str(2 * rx) + ',0'
+        d += 'a' + str(rx) + ',' + str(ry) + ' 0 1,0 ' + str(-2 * rx) + ',0'
+
+    return d + 'z'
 
 
-def polyline2pathd(polyline_d):
+def polyline2pathd(polyline, is_polygon=False):
     """converts the string from a polyline points-attribute to a string for a
     Path object d-attribute"""
-    points = polyline_d.replace(', ', ',')
-    points = points.replace(' ,', ',')
-    points = points.split()
+    if isinstance(polyline, str):
+        points = polyline
+    else:
+        points = COORD_PAIR_TMPLT.findall(polyline.get('points', ''))
 
-    closed = points[0] == points[-1]
+    if len(points) == 0:
+        return ''
 
-    d = 'M' + points.pop(0).replace(',', ' ')
-    for p in points:
-        d += 'L' + p.replace(',', ' ')
-    if closed:
-        d += 'z'
-    return d
-
-
-def polygon2pathd(polyline_d):
-    """converts the string from a polygon points-attribute to a string for a
-    Path object d-attribute.
-    Note:  For a polygon made from n points, the resulting path will be
-    composed of n lines (even if some of these lines have length zero)."""
-    points = polyline_d.replace(', ', ',')
-    points = points.replace(' ,', ',')
-    points = points.split()
-
-    reduntantly_closed = points[0] == points[-1]
-
-    d = 'M' + points[0].replace(',', ' ')
-    for p in points[1:]:
-        d += 'L' + p.replace(',', ' ')
+    closed = (float(points[0][0]) == float(points[-1][0]) and
+              float(points[0][1]) == float(points[-1][1]))
 
     # The `parse_path` call ignores redundant 'z' (closure) commands
     # e.g. `parse_path('M0 0L100 100Z') == parse_path('M0 0L100 100L0 0Z')`
     # This check ensures that an n-point polygon is converted to an n-Line path.
-    if reduntantly_closed:
-        d += 'L' + points[0].replace(',', ' ')
+    if is_polygon and closed:
+        points.append(points[0])
 
-    return d + 'z'
+    d = 'M' + 'L'.join('{0} {1}'.format(x,y) for x,y in points)
+    if is_polygon or closed:
+        d += 'z'
+    return d
+
+
+def polygon2pathd(polyline, is_polygon=True):
+    """converts the string from a polygon points-attribute to a string 
+    for a Path object d-attribute.
+    Note:  For a polygon made from n points, the resulting path will be
+    composed of n lines (even if some of these lines have length zero).
+    """
+    return polyline2pathd(polyline, is_polygon)
 
 
 def rect2pathd(rect):
     """Converts an SVG-rect element to a Path d-string.
     
-    The rectangle will start at the (x,y) coordinate specified by the rectangle 
-    object and proceed counter-clockwise."""
-    x0, y0 = float(rect.get('x', 0)), float(rect.get('y', 0))
-    w, h = float(rect["width"]), float(rect["height"])
-    x1, y1 = x0 + w, y0
-    x2, y2 = x0 + w, y0 + h
-    x3, y3 = x0, y0 + h
+    The rectangle will start at the (x,y) coordinate specified by the 
+    rectangle object and proceed counter-clockwise."""
+    x, y = float(rect.get('x', 0)), float(rect.get('y', 0))
+    w, h = float(rect.get('width', 0)), float(rect.get('height', 0))
+
+    if 'rx' in rect.keys() or 'ry' in rect.keys():
+
+        # if only one, rx or ry, is present, use that value for both
+        # https://developer.mozilla.org/en-US/docs/Web/SVG/Element/rect
+        rx = rect.get('rx', None)
+        ry = rect.get('ry', None)
+        if rx is None:
+            rx = ry or 0.
+        if ry is None:
+            ry = rx or 0.
+        rx, ry = float(rx), float(ry)
+
+        d = "M {} {} ".format(x + rx, y)  # right of p0
+        d += "L {} {} ".format(x + w - rx, y)  # go to p1
+        d += "A {} {} 0 0 1 {} {} ".format(rx, ry, x+w, y+ry)  # arc for p1
+        d += "L {} {} ".format(x+w, y+h-ry)  # above p2
+        d += "A {} {} 0 0 1 {} {} ".format(rx, ry, x+w-rx, y+h)  # arc for p2
+        d += "L {} {} ".format(x+rx, y+h)  # right of p3
+        d += "A {} {} 0 0 1 {} {} ".format(rx, ry, x, y+h-ry)  # arc for p3
+        d += "L {} {} ".format(x, y+ry)  # below p0
+        d += "A {} {} 0 0 1 {} {} z".format(rx, ry, x+rx, y)  # arc for p0
+        return d
+
+    x0, y0 = x, y
+    x1, y1 = x + w, y
+    x2, y2 = x + w, y + h
+    x3, y3 = x, y + h
 
     d = ("M{} {} L {} {} L {} {} L {} {} z"
          "".format(x0, y0, x1, y1, x2, y2, x3, y3))
+        
     return d
+
+
+def line2pathd(l):
+    return (
+        'M' + l.attrib.get('x1', '0') + ' ' + l.attrib.get('y1', '0')
+        + 'L' + l.attrib.get('x2', '0') + ' ' + l.attrib.get('y2', '0')
+    )
 
 
 def svg2paths(svg_file_location,
@@ -109,7 +175,9 @@ def svg2paths(svg_file_location,
     SVG Path, Line, Polyline, Polygon, Circle, and Ellipse elements.
 
     Args:
-        svg_file_location (string): the location of the svg file
+        svg_file_location (string or file-like object): the location of the
+            svg file on disk or a file-like object containing the content of a
+            svg file
         return_svg_attributes (bool): Set to True and a dictionary of
             svg-attributes will be extracted and returned.  See also the 
             `svg2paths2()` function.
@@ -133,8 +201,10 @@ def svg2paths(svg_file_location,
         list: The list of corresponding path attribute dictionaries.
         dict (optional): A dictionary of svg-attributes (see `svg2paths2()`).
     """
-    if os_path.dirname(svg_file_location) == '':
-        svg_file_location = os_path.join(getcwd(), svg_file_location)
+    # strings are interpreted as file location everything else is treated as
+    # file-like object and passed to the xml parser directly
+    from_filepath = isinstance(svg_file_location, str) or isinstance(svg_file_location, FilePathLike)
+    svg_file_location = os.path.abspath(svg_file_location) if from_filepath else svg_file_location
 
     doc = parse(svg_file_location)
 
@@ -153,14 +223,14 @@ def svg2paths(svg_file_location,
     # path strings, add to list
     if convert_polylines_to_paths:
         plins = [dom2dict(el) for el in doc.getElementsByTagName('polyline')]
-        d_strings += [polyline2pathd(pl['points']) for pl in plins]
+        d_strings += [polyline2pathd(pl) for pl in plins]
         attribute_dictionary_list += plins
 
     # Use minidom to extract polygon strings from input SVG, convert to
     # path strings, add to list
     if convert_polygons_to_paths:
         pgons = [dom2dict(el) for el in doc.getElementsByTagName('polygon')]
-        d_strings += [polygon2pathd(pg['points']) for pg in pgons]
+        d_strings += [polygon2pathd(pg, True) for pg in pgons]
         attribute_dictionary_list += pgons
 
     if convert_lines_to_paths:
@@ -207,6 +277,29 @@ def svg2paths2(svg_file_location,
     return_svg_attributes=True by default.  See svg2paths() docstring for more
     info."""
     return svg2paths(svg_file_location=svg_file_location,
+                     return_svg_attributes=return_svg_attributes,
+                     convert_circles_to_paths=convert_circles_to_paths,
+                     convert_ellipses_to_paths=convert_ellipses_to_paths,
+                     convert_lines_to_paths=convert_lines_to_paths,
+                     convert_polylines_to_paths=convert_polylines_to_paths,
+                     convert_polygons_to_paths=convert_polygons_to_paths,
+                     convert_rectangles_to_paths=convert_rectangles_to_paths)
+
+
+def svgstr2paths(svg_string,
+               return_svg_attributes=False,
+               convert_circles_to_paths=True,
+               convert_ellipses_to_paths=True,
+               convert_lines_to_paths=True,
+               convert_polylines_to_paths=True,
+               convert_polygons_to_paths=True,
+               convert_rectangles_to_paths=True):
+    """Convenience function; identical to svg2paths() except that it takes the
+    svg object as string.  See svg2paths() docstring for more
+    info."""
+    # wrap string into StringIO object
+    svg_file_obj = StringIO(svg_string)
+    return svg2paths(svg_file_location=svg_file_obj,
                      return_svg_attributes=return_svg_attributes,
                      convert_circles_to_paths=convert_circles_to_paths,
                      convert_ellipses_to_paths=convert_ellipses_to_paths,

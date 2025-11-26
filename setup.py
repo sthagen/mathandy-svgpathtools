@@ -3,18 +3,17 @@ import codecs
 import os
 
 
-VERSION = '1.3.2beta'
+VERSION = '1.7.1'
 AUTHOR_NAME = 'Andy Port'
 AUTHOR_EMAIL = 'AndyAPort@gmail.com'
+GITHUB = 'https://github.com/mathandy/svgpathtools'
+
+_here = os.path.abspath(os.path.dirname(__file__))
 
 
-def read(*parts):
-    """
-    Build an absolute path from *parts* and and return the contents of the
-    resulting file.  Assume UTF-8 encoding.
-    """
-    HERE = os.path.abspath(os.path.dirname(__file__))
-    with codecs.open(os.path.join(HERE, *parts), "rb", "utf-8") as f:
+def read(relative_path):
+    """Reads file at relative path, returning contents as string."""
+    with codecs.open(os.path.join(_here, relative_path), "rb", "utf-8") as f:
         return f.read()
 
 
@@ -23,26 +22,30 @@ setup(name='svgpathtools',
       version=VERSION,
       description=('A collection of tools for manipulating and analyzing SVG '
                    'Path objects and Bezier curves.'),
-      long_description=read("README.rst"),
-      # long_description=open('README.rst').read(),
+      long_description=read("README.md"),
+      long_description_content_type='text/markdown',
       author=AUTHOR_NAME,
       author_email=AUTHOR_EMAIL,
-      url='https://github.com/mathandy/svgpathtools',
-      download_url = 'http://github.com/mathandy/svgpathtools/tarball/'+VERSION,
+      url=GITHUB,
+      download_url='{}/releases/download/{}/svgpathtools-{}-py3-none-any.whl'
+                   ''.format(GITHUB, VERSION, VERSION),
       license='MIT',
-      
-      # install_requires=['numpy', 'svgwrite'],
+      install_requires=['numpy', 'svgwrite', 'scipy'],
+      python_requires='>=3.8',
       platforms="OS Independent",
-      # test_suite='tests',
-      requires=['numpy', 'svgwrite'],
       keywords=['svg', 'svg path', 'svg.path', 'bezier', 'parse svg path', 'display svg'],
-      classifiers = [
+      classifiers=[
             "Development Status :: 4 - Beta",
             "Intended Audience :: Developers",
             "License :: OSI Approved :: MIT License",
             "Operating System :: OS Independent",
-            "Programming Language :: Python :: 2",
             "Programming Language :: Python :: 3",
+            "Programming Language :: Python :: 3.8",
+            "Programming Language :: Python :: 3.9",
+            "Programming Language :: Python :: 3.10",
+            "Programming Language :: Python :: 3.11",
+            "Programming Language :: Python :: 3.12",
+            "Programming Language :: Python :: 3.13",
             "Topic :: Multimedia :: Graphics :: Editors :: Vector-Based",
             "Topic :: Scientific/Engineering",
             "Topic :: Scientific/Engineering :: Image Recognition",
