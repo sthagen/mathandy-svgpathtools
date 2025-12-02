@@ -3,7 +3,7 @@ import codecs
 import os
 
 
-VERSION = '1.7.1'
+VERSION = '1.7.2'
 AUTHOR_NAME = 'Andy Port'
 AUTHOR_EMAIL = 'AndyAPort@gmail.com'
 GITHUB = 'https://github.com/mathandy/svgpathtools'

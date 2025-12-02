@@ -500,6 +500,11 @@ class QuadraticBezierTest(unittest.TestCase):
         for t0, t1, exp_s in tests:
             self.assertAlmostEqual(linq2.length(t0=t0, t1=t1), exp_s, delta=TOL)
 
+        # flat quadratic bezier curve should be almost as long as a straight line
+        flat_quad_bez = QuadraticBezier(start=46 + 125j, control=45.8 + 124.6j, end=45.7 + 124.4j)
+        line = Line(start=46 + 125j, end=45.7 + 124.4j)
+        self.assertAlmostEqual(flat_quad_bez.length(), line.length(), delta=TOL)
+
     def test_equality(self):
         # This is to test the __eq__ and __ne__ methods, so we can't use
         # assertEqual and assertNotEqual
