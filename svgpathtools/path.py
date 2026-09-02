@@ -44,8 +44,41 @@ except NameError:
 COMMANDS = set('MmZzLlHhVvCcSsQqTtAa')
 UPPERCASE = set('MZLHVCSQTA')
 
+# Number of numeric parameters each command consumes per repetition.
+COMMAND_NUM_ARGS = {'M': 2, 'L': 2, 'H': 1, 'V': 1, 'C': 6,
+                    'S': 4, 'Q': 4, 'T': 2, 'A': 7, 'Z': 0}
+
 COMMAND_RE = re.compile(r"([MmZzLlHhVvCcSsQqTtAa])")
 FLOAT_RE = re.compile(r"[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?")
+# In an elliptical arc argument the large-arc-flag and sweep-flag are each a
+# single "0"/"1" character that, unlike the other fields, may be written with
+# no separator before the next number (e.g. "0110 0" == "0 1 10 0"); see the
+# SVG path grammar: https://www.w3.org/TR/SVG/paths.html#PathDataBNF
+ARC_FLAG_RE = re.compile(r"[01]")
+WSP_COMMA_RE = re.compile(r"[\s,]*")
+
+
+def _tokenize_arc_args(arg_chunk):
+    """Yield the tokens of one or more seven-field elliptical-arc groups."""
+    pos = 0
+    field = 0
+    n = len(arg_chunk)
+    while True:
+        sep = WSP_COMMA_RE.match(arg_chunk, pos)
+        if sep:
+            pos = sep.end()
+        if pos >= n:
+            return
+        match = None
+        if field % 7 in (3, 4):
+            match = ARC_FLAG_RE.match(arg_chunk, pos)
+        if match is None:
+            match = FLOAT_RE.match(arg_chunk, pos)
+        if match is None:
+            return
+        yield match.group()
+        pos = match.end()
+        field += 1
 
 # Default Parameters ##########################################################
 
@@ -3191,11 +3224,20 @@ class Path(MutableSequence):
         return zip(a, b)
 
     def _tokenize_path(self, pathdef):
+        command = None
         for x in COMMAND_RE.split(pathdef):
             if x in COMMANDS:
+                command = x
                 yield x
-            for token in FLOAT_RE.findall(x):
-                yield token
+                continue
+            if command in ('A', 'a'):
+                # Arc arguments need flag-aware tokenizing; the other commands
+                # only carry plain numbers.
+                for token in _tokenize_arc_args(x):
+                    yield token
+            else:
+                for token in FLOAT_RE.findall(x):
+                    yield token
 
     def _parse_path(self, pathdef, current_pos=0j, tree_element=None):
         # In the SVG specs, initial movetos are absolute, even if
@@ -3226,6 +3268,15 @@ class Path(MutableSequence):
                     raise ValueError("Unallowed implicit command in %s, position %s" % (
                         pathdef, len(pathdef.split()) - len(elements)))
                 last_command = command  # Used by S and T
+
+            # A command must be followed by its full set of coordinates; a
+            # truncated path (e.g. "M 0 0 L") would otherwise pop past the end
+            # of the token list and raise a bare IndexError.
+            if len(elements) < COMMAND_NUM_ARGS[command]:
+                raise ValueError("Invalid path string: command '%s' expects %d "
+                                 "values but only %d remain in %r" % (
+                                     command, COMMAND_NUM_ARGS[command],
+                                     len(elements), pathdef))
 
             if command == 'M':
                 # Moveto command.
@@ -3297,7 +3348,7 @@ class Path(MutableSequence):
                 # Smooth curve. First control point is the "reflection" of
                 # the second control point in the previous path.
 
-                if last_command not in 'CS':
+                if last_command not in ('C', 'S'):
                     # If there is no previous command or if the previous command
                     # was not an C, c, S or s, assume the first control point is
                     # coincident with the current point.
@@ -3333,7 +3384,7 @@ class Path(MutableSequence):
                 # Smooth curve. Control point is the "reflection" of
                 # the second control point in the previous path.
 
-                if last_command not in 'QT':
+                if last_command not in ('Q', 'T'):
                     # If there is no previous command or if the previous command
                     # was not an Q, q, T or t, assume the first control point is
                     # coincident with the current point.

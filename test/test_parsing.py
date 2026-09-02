@@ -170,6 +170,36 @@ class TestParser(unittest.TestCase):
         path2 = parse_path('M 100 200 c 10 -5 20 -10 30 -20')
         self.assertEqual(path1, path2)
 
+    def test_arc_flag_packing(self):
+        """Arc flags may run straight into the next number (#129)."""
+        # Each packed form must parse identically to the spaced-out form.
+        equivalent = [
+            ('M 0 0 A 5 5 0 0110 0', 'M 0 0 A 5 5 0 0 1 10 0'),
+            ('M 0 0 A 5 5 0 1110 0', 'M 0 0 A 5 5 0 1 1 10 0'),
+            ('M 0 0 A 5 5 0 0010 0', 'M 0 0 A 5 5 0 0 0 10 0'),
+            ('M 0 0 a 5 5 0 0010 0', 'M 0 0 a 5 5 0 0 0 10 0'),
+            ('M 0 0 A 5 5 0 01-10 0', 'M 0 0 A 5 5 0 0 1 -10 0'),
+            ('M 0 0 A 5 5 0 0 1 10 0 5 5 0 1120 0',
+             'M 0 0 A 5 5 0 0 1 10 0 5 5 0 1 1 20 0'),
+        ]
+        for packed, spaced in equivalent:
+            self.assertEqual(parse_path(packed), parse_path(spaced))
+
+        # The flags carry through to the resulting Arc.
+        arc = parse_path('M 0 0 A 5 5 0 0110 0')[0]
+        self.assertFalse(arc.large_arc)
+        self.assertTrue(arc.sweep)
+        self.assertEqual(arc.end, 10 + 0j)
+
+        # Real-world path from issue #129 (simple-icons "emlakjet") with packed
+        # "00" flags; this used to raise IndexError.
+        icon = 'M12 0a3.543 3.543 0 00-1.267 2.471A3.543 3.543 0 0012 0z'
+        path = parse_path(icon)
+        self.assertEqual(len(path), 2)
+        self.assertTrue(all(isinstance(seg, Arc) for seg in path))
+        self.assertFalse(path[0].large_arc)
+        self.assertFalse(path[0].sweep)
+
     def test_numbers(self):
         """Exponents and other number format cases"""
         # It can be e or E, the plus is optional, and a minimum of
@@ -181,6 +211,22 @@ class TestParser(unittest.TestCase):
     def test_errors(self):
         self.assertRaises(ValueError, parse_path,
                           'M 100 100 L 200 200 Z 100 200')
+
+    def test_truncated_commands(self):
+        # A command missing some of its coordinates used to pop past the end of
+        # the token list and raise a bare IndexError instead of a ValueError.
+        for d in ('M', 'M 10', 'M 0 0 L', 'M 0 0 C 1 1 2 2',
+                  'H', 'V', 'Q 1 1', 'A 1 1 0 0 1'):
+            self.assertRaises(ValueError, parse_path, d)
+
+    def test_leading_smooth_command(self):
+        # A path starting with a smooth command (S/T) has no previous control
+        # point to reflect; the first control point coincides with the current
+        # point. This used to raise a TypeError from ``None in 'CS'``.
+        self.assertEqual(parse_path('S 1 1 2 2'),
+                         Path(CubicBezier(0j, 0j, 1 + 1j, 2 + 2j)))
+        self.assertEqual(parse_path('T 1 1'),
+                         Path(QuadraticBezier(0j, 0j, 1 + 1j)))
 
 
     def test_transform(self):
